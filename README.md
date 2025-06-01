@@ -43,7 +43,8 @@ OPENAI_API_KEY=your_api_key_here
 
 1. Start the application:
 ```bash
-streamlit run streamlit_app.py
+streamlit run chat_with_csv.py
+python agents_for_csv.py
 ```
 
 2. Upload your CSV file through the web interface
