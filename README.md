@@ -1,27 +1,29 @@
-# Chat with CSV
+# Intelligent CSV Analysis Assistant
 
-An intelligent chat interface for analyzing CSV files using multiple specialized AI agents. This project combines various AI agents for data preprocessing, statistical analysis, machine learning, and visualization to provide comprehensive data analysis through natural language interaction.
+An AI-powered CSV analysis tool that helps you understand and visualize your data through natural language queries.
 
 ## Features
 
-- Multiple specialized AI agents:
-  - Analytical Planner: Coordinates analysis strategy
-  - Preprocessing Agent: Data cleaning and initial analysis
-  - Statistical Analytics Agent: Statistical analysis using statsmodels
-  - Machine Learning Agent: ML analysis using scikit-learn
-  - Data Visualization Agent: Creating plots using Plotly
-  - Code Combiner Agent: Integrates code from multiple agents
-  - Goal Refiner Agent: Refines user queries for better results
+- 📊 Automated data analysis and visualization
+- 💬 Natural language interface for data queries
+- 📈 Statistical analysis and pattern detection
+- 🤖 Machine learning insights
+- 🎨 Beautiful visualizations with Plotly
 
-## Setup
+## Requirements
+
+- Python 3.10+
+- OpenAI API key
+
+## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/chat_with_csv.git
-cd chat_with_csv
+git clone https://github.com/yourusername/csv-analysis-assistant.git
+cd csv-analysis-assistant
 ```
 
-2. Create a virtual environment:
+2. Create a virtual environment and activate it:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -32,47 +34,35 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Create a `.env` file with your API keys:
+4. Create a `.env` file in the project root and add your OpenAI API key:
 ```
-OPENAI_API_KEY=your_openai_api_key
-TAVILY_API_KEY=your_tavily_api_key
+OPENAI_API_KEY=your_api_key_here
 ```
 
 ## Usage
 
-1. Place your CSV file in the project directory
-
-2. Run the main script:
+1. Start the application:
 ```bash
-python chat_with_csv.py
+streamlit run streamlit_app.py
 ```
 
-3. Interact with the system using natural language queries about your data
+2. Upload your CSV file through the web interface
+3. Enter your OpenAI API key
+4. Start asking questions about your data!
 
-## Example Queries
-
-- "Analyze the distribution of values in column X"
-- "Find correlations between columns A and B"
-- "Create a visualization showing the trend of X over time"
-- "Build a prediction model for target Y using features A, B, C"
+Example queries:
+- What is the distribution of the data?
+- What are the data correlations?
+- How to predict specific outcomes?
+- Create visualizations to understand patterns
 
 ## Project Structure
 
 ```
-chat_with_csv/
-├── chat_with_csv.py     # Main application file
-├── requirements.txt     # Project dependencies
-├── README.md           # Documentation
-└── .env                # API keys and configuration
+.
+├── __init__.py
+├── streamlit_app.py     # Main Streamlit application
+├── chat_with_csv.py     # Core analysis logic
+└── agents_for_csv.py    # AI agents for analysis
 ```
 
-## Requirements
-
-- Python 3.8+
-- OpenAI API key
-- Tavily API key
-- Required Python packages (see requirements.txt)
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details. 

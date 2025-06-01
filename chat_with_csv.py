@@ -1,140 +1,178 @@
+import streamlit as st
 import os
 from typing import TypedDict, List
 from dotenv import load_dotenv
+import pandas as pd
 from langchain_openai import ChatOpenAI
-from langgraph.graph import StateGraph, END
-from langchain.prompts import PromptTemplate
-from langchain.schema import HumanMessage
-from langchain_tavily import TavilySearch
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.messages import HumanMessage
-from langgraph.prebuilt import create_react_agent
 import dspy
-from langchain.globals import set_llm_cache
-from langchain_community.cache import SQLiteCache
+import plotly.graph_objects as go
+from llama_index.core import Document
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.llms.openai import OpenAI
+from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core import Settings
+from agents_for_csv import *
+from io import StringIO
+import warnings
+warnings.filterwarnings('ignore')
 
 # Load environment variables
 load_dotenv()
 
-# Initialize the ChatOpenAI instance 
-llm = ChatOpenAI(model="gpt-3.5-turbo")
+# Streamlit interface setup
+st.set_page_config(page_title="CSV Analysis Assistant", layout="wide")
+st.title("📊 Intelligent CSV Analysis Assistant")
 
-# Set up SQLite cache
-set_llm_cache(SQLiteCache(database_path="cache.db"))
-
-# State class for tracking agent's state
-class State(TypedDict):
-    query: str
-    tavily_tool: str
-    auto_analyst: dict
-    plot_tool: dict
-    auto_evaluation: dict
-
-# Tavily Search setup
-TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
-os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY
-
-def tavily_node(state: State):
-    # Initialize Tavily Search Tool
-    search = TavilySearchResults(max_results=5)
-    tools = [search]
-    query = input("Tavily search:")
-    agent_executor = [create_react_agent(llm, tools), query]
-    response = agent_executor[0].invoke(
-        {
-            "messages": [HumanMessage(content=query)]
-        }
-    )
+# Sidebar for file upload and configuration
+with st.sidebar:
+    st.header("📁 Upload & Configure")
+    uploaded_file = st.file_uploader("Upload your CSV file", type=['csv'])
+    if uploaded_file:
+        st.success("File uploaded successfully!")
     
-    print('1', response['messages'][-1].content)
-    return {"tavily_tool": agent_executor[0]}
+    api_key = st.text_input("OpenAI API Key", type="password")
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+        st.success("API key set!")
 
-# DSPy Agents Setup
-lm = dspy.LM('openai/gpt-4', model_type='chat', max_tokens=1000)
-dspy.configure(lm=lm)
+# Main content area
+if not uploaded_file:
+    st.markdown("""
+    ### 👋 Welcome to the CSV Analysis Assistant!
+    
+    Upload your CSV file to get started. I can help you:
+    - Analyze patterns and relationships in your data
+    - Create insightful visualizations
+    - Perform statistical analysis
+    - Discover meaningful insights
+    """)
+    st.stop()
 
-class analytical_planner(dspy.Signature):
-    """You are data analytics planner agent. You have access to three inputs
-    1. Full Dataset
-    2. Data Agent descriptions
-    3. User-defined Goal
-    You take these three inputs to develop a comprehensive plan to achieve the user-defined goal from the data & Agents available.
-    In case you think the user-defined goal is infeasible you can ask the user to redefine or add more description to the goal.
+# Load and display the data
+@st.cache_data
+def load_data(file):
+    df = pd.read_csv(file)
+    return df
 
-    Give your output in this format:
-    plan: Agent1->Agent2->Agent3
-    plan_desc = Use Agent 1 for this reason, then agent2 for this reason and lastly agent3 for this reason.
+df = load_data(uploaded_file)
 
-    You don't have to use all the agents in response of the query
-    """
-    dataset = dspy.InputField(desc="Available datasets loaded in the system")
-    Agent_desc = dspy.InputField(desc="The agents available in the system")
-    goal = dspy.InputField(desc="The user defined goal")
-    plan = dspy.OutputField(desc="The plan that would achieve the user defined goal")
-    plan_desc = dspy.OutputField(desc="The reasoning behind the chosen plan")
+# Display data overview
+col1, col2, col3 = st.columns([2,1,1])
+with col1:
+    st.markdown("### 📊 Data Preview")
+    st.dataframe(df.head(), use_container_width=True)
+with col2:
+    st.metric("Rows", df.shape[0])
+    st.metric("Columns", df.shape[1])
+with col3:
+    st.markdown("### 📈 Data Types")
+    dtypes = df.dtypes.value_counts()
+    for dtype, count in dtypes.items():
+        st.metric(f"{dtype}", count)
 
-class preprocessing_agent(dspy.Signature):
-    """You are a data pre-processing agent, your job is to take a user-defined goal and available dataset,
-    to build an exploratory analytics pipeline. You do this by outputing the required Python code. 
-    You will only use numpy and pandas, to perform pre-processing and introductory analysis according to data types.
-    you must prevent bias.
-    """
-    dataset = dspy.InputField(desc="Available datasets loaded in the system")
-    goal = dspy.InputField(desc="The user defined goal")
-    commentary = dspy.OutputField(desc="The comments about what analysis is being performed")
-    code = dspy.OutputField(desc="The code that does the data preprocessing prevent bias conclusions and introductory analysis")
+# Initialize LLM and agents
+@st.cache_resource
+def initialize_agents():
+    # Set up LLM configurations
+    Settings.llm = OpenAI(model="gpt-3.5-turbo")
+    Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
+    Settings.node_parser = SentenceSplitter(chunk_size=512, chunk_overlap=20)
+    Settings.num_output = 512
+    Settings.context_window = 3900
+    
+    # Create document from dataframe
+    df_text = df.to_string()
+    documents = [Document(text=df_text)]
+    
+    # Create index
+    dataframe_index = VectorStoreIndex.from_documents(documents)
+    
+    return auto_analyst(agents=[preprocessing_agent, statistical_analytics_agent, sk_learn_agent, data_viz_agent])
 
-class statistical_analytics_agent(dspy.Signature):
-    """You are a statistical analytics agent. 
-    Your task is to take a dataset and a user-defined goal, and output 
-    Python code that performs the appropriate statistical analysis to achieve that goal without bias.
-    You should use the Python statsmodel library"""
-    dataset = dspy.InputField(desc="Available datasets loaded in the system")
-    goal = dspy.InputField(desc="The user defined goal for the analysis to be performed")
-    commentary = dspy.OutputField(desc="The comments about what analysis is being performed")
-    code = dspy.OutputField(desc="The code that does the statistical analysis using statsmodel")
+if api_key:
+    try:
+        analyst_system = initialize_agents()
+        st.success("✨ Analysis system ready!")
+    except Exception as e:
+        st.error(f"Error initializing system: {str(e)}")
+        st.stop()
 
-class sk_learn_agent(dspy.Signature):
-    """You are a machine learning agent. 
-    Your task is to take a dataset and a user-defined goal, and output Python code that performs the appropriate machine learning analysis to achieve that goal. 
-    You should use the scikit-learn library."""
-    dataset = dspy.InputField(desc="Available datasets loaded in the system")
-    goal = dspy.InputField(desc="The user defined goal")
-    commentary = dspy.OutputField(desc="The comments about what analysis is being performed")
-    code = dspy.OutputField(desc="The code that does the Exploratory data analysis")
+# Chat interface
+st.markdown("### 💬 Ask me about your data")
+st.markdown("""
+**Example queries:**
+- What is the distribution of the data?
+- what are the data correlations?
+- How to predict ...?
+- Create visualizations to understand the data distribution
+""")
 
-class code_combiner_agent(dspy.Signature):
-    """You are a code combine agent, taking Python code output from many agents and combining the operations into 1 output
-    You also fix any errors in the code"""
-    agent_code_list = dspy.InputField(desc="A list of code given by each agent")
-    refined_complete_code = dspy.OutputField(desc="Refined complete code base")
+# Create two columns for chat input
+input_col, button_col = st.columns([4,1])
+with input_col:
+    query = st.text_input(
+        "Your query",
+        placeholder="Ask me  about your data...",
+        label_visibility="collapsed"
+    )
+with button_col:
+    analyze_button = st.button("Analyze", use_container_width=True)
 
-class data_viz_agent(dspy.Signature):
-    """
-    You are AI agent who uses the goal to generate data visualizations in Plotly.
-    You have to use the tools available to your disposal
-    {dataframe_index}
-    {styling_index}
+if analyze_button and query and api_key:
+    with st.spinner("🤔 Analyzing your data..."):
+        try:
+            # Get analysis from auto_analyst
+            output_dict = analyst_system(query=query)
+            
+            # Show results in a clean layout
+            st.markdown("### 📊 Analysis Results")
+            
+            # Analysis Plan
+            st.markdown("#### Analysis Approach")
+            st.info(f"**Plan:** {output_dict['analytical_planner'].plan}")
+            st.markdown(f"**Reasoning:** {output_dict['analytical_planner'].plan_desc}")
+            
+            # Results from each agent
+            plan_list = output_dict['analytical_planner'].plan.split('->')
+            
+            for agent_name in plan_list:
+                agent_name = agent_name.strip()
+                if agent_name in output_dict:
+                    st.markdown(f"#### {agent_name.replace('_', ' ').title()}")
+                    
+                    # Show commentary
+                    st.markdown(output_dict[agent_name].commentary)
+                    
+                    # Show code in expander
+                    with st.expander("View Code"):
+                        st.code(output_dict[agent_name].code, language='python')
+                    
+                    # Handle visualizations
+                    if agent_name == 'data_viz_agent':
+                        try:
+                            local_vars = {'df': df, 'pd': pd, 'px': px, 'go': go}
+                            exec(output_dict[agent_name].code, globals(), local_vars)
+                            if 'fig' in local_vars:
+                                st.plotly_chart(local_vars['fig'], use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Visualization error: {str(e)}")
+            
+            # Combined code in expander
+            with st.expander("View Complete Analysis Code"):
+                st.code(output_dict['code_combiner_agent'].refined_complete_code, language='python')
+            
+        except Exception as e:
+            st.error(f"Analysis error: {str(e)}")
 
-    You must give an output as code, in case there is no relevant columns, just state that you don't have the relevant information
-    """
-    goal = dspy.InputField(desc="user defined goal which includes information about data and chart they want to plot")
-    dataframe_context = dspy.InputField(desc="Provides information about the data in the data frame.")
-    styling_context = dspy.InputField(desc='Provides instructions on how to style your Plotly plots')
-    code = dspy.OutputField(desc="Plotly code that visualizes what the user needs according to the query & dataframe_index & styling_context")
-
-class goal_refiner_agent(dspy.Signature):
-    """You take a user-defined goal given to a AI data analyst planner agent, 
-    you make the goal more elaborate using the dataset available and agent_desc"""
-    dataset = dspy.InputField(desc="Available dataset loaded in the system")
-    Agent_desc = dspy.InputField(desc="The agents available in the system")
-    goal = dspy.InputField(desc="The user defined goal")
-    refined_goal = dspy.OutputField(desc='Refined goal that helps the planner agent plan better')
-
-def main():
-    # Test the setup
-    response = llm.invoke("Hello! Are you working?")
-    print(response.content)
+# Add helpful information in sidebar
+st.sidebar.markdown("""
+### 💡 Tips
+- Upload your CSV file first
+- Enter your OpenAI API key
+- Ask questions in natural language
+- Get comprehensive analysis automatically
+""")
 
 if __name__ == "__main__":
-    main() 
+    pass 

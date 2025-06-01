@@ -44,4 +44,11 @@ cache.db
 *.xls
 
 # Logs
-*.log 
+*.log
+
+# Streamlit
+.streamlit/
+
+# Misc
+.DS_Store
+temp.csv 
