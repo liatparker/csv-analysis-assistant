@@ -12,7 +12,7 @@ An AI-powered CSV analysis tool that helps you understand and visualize your dat
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - OpenAI API key
 
 ## Installation
